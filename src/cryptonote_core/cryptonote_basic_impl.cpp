@@ -34,6 +34,12 @@ namespace cryptonote {
   }
   //-----------------------------------------------------------------------------------------------
   bool get_block_reward(size_t median_size, size_t current_block_size, uint64_t already_generated_coins, uint64_t &reward) {
+    static_assert(GENESIS_BLOCK_REWARD <= MONEY_SUPPLY, "Bad GENESIS_BLOCK_REWARD");
+    if (already_generated_coins == 0) {
+      reward = GENESIS_BLOCK_REWARD;
+      return true;
+    }
+
     uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> EMISSION_SPEED_FACTOR;
 
     //make it soft

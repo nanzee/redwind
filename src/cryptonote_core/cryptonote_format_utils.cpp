@@ -617,17 +617,54 @@ namespace cryptonote
     return p;
   }
   //---------------------------------------------------------------
-  void generate_genesis_tx(transaction& tx) {
-    account_public_address ac = boost::value_initialized<account_public_address>();
-    std::vector<size_t> sz;
-    construct_miner_tx(0, 0, 0, 0, 0, ac, tx); // zero fee in genesis
-    blobdata txb = tx_to_blob(tx);
+  bool generate_genesis_tx(transaction& tx, const std::vector<account_public_address>& targets) {
+    assert(!targets.empty());
+
+    tx.vin.clear();
+    tx.vout.clear();
+    tx.extra.clear();
+
+    tx.version = CURRENT_TRANSACTION_VERSION;
+    tx.unlock_time = CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+
+    keypair txkey = keypair::generate();
+    add_tx_pub_key_to_extra(tx, txkey.pub);
+
+    txin_gen in;
+    in.height = 0;
+    tx.vin.push_back(in);
+
+    uint64_t block_reward = GENESIS_BLOCK_REWARD;
+    uint64_t target_amount = block_reward / targets.size();
+    uint64_t first_target_amount = target_amount + block_reward % targets.size();
+
+    for (size_t i = 0; i < targets.size(); ++i) {
+      crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
+      crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+      bool r = crypto::generate_key_derivation(targets[i].m_view_public_key, txkey.sec, derivation);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << targets[i].m_view_public_key << ", " << txkey.sec << ")");
+
+      r = crypto::derive_public_key(derivation, i, targets[i].m_spend_public_key, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << i << ", " << targets[i].m_spend_public_key << ")");
+
+      txout_to_key tk;
+      tk.key = out_eph_public_key;
+
+      tx_out out;
+      out.amount = (i == 0) ? first_target_amount : target_amount;
+      out.target = tk;
+      tx.vout.push_back(out);
+    }
+
+    return true;
   }
 
-  std::string get_genesis_tx_hex() {
+  std::string get_genesis_tx_hex(const std::vector<account_public_address>& targets) {
     transaction tx;
 
-    generate_genesis_tx(tx);
+    if (!generate_genesis_tx(tx, targets)) {
+      return std::string();
+    }
     blobdata txb = tx_to_blob(tx);
     std::string hex_tx_represent = string_tools::buff_to_hex_nodelimer(txb);
 

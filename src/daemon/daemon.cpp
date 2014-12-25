@@ -39,15 +39,31 @@ namespace
   const command_line::arg_descriptor<bool>        arg_testnet_on  = {"testnet", "Used to deploy test nets. Checkpoints and hardcoded seeds are ignored, "
     "network id is changed. Use it with --data-dir flag. The wallet must be launched with --testnet flag.", false};
   const command_line::arg_descriptor<bool>        arg_print_genesis_tx = {"print-genesis-tx", "Prints genesis' block tx hex to insert it to config and exits"};
+  const command_line::arg_descriptor<std::vector<std::string>> arg_genesis_block_reward_address = { "genesis-block-reward-address", "" };
 }
 
 bool command_line_preprocessor(const boost::program_options::variables_map& vm);
 
-void print_genesis_tx_hex() {
-  std::string tx_hex = cryptonote::get_genesis_tx_hex();
+void print_genesis_tx_hex(const po::variables_map& vm) {
+  std::vector<cryptonote::account_public_address> targets;
+  auto genesis_block_reward_addresses = command_line::get_arg(vm, arg_genesis_block_reward_address);
+  for (const auto& address_string : genesis_block_reward_addresses) {
+    cryptonote::account_public_address address;
+    if (!cryptonote::get_account_address_from_str(address, address_string)) {
+      std::cout << "Failed to parse address: " << address_string << std::endl;
+      return;
+    }
+    targets.emplace_back(std::move(address));
+  }
 
-  std::cout << "Insert this line into your coin configuration file as is: " << std::endl;
-  std::cout << "#define GENESIS_COINBASE_TX_HEX  \"" << tx_hex  << "\"" << std::endl;
+  if (targets.empty()) {
+    std::cout << "Error: genesis block reward addresses are not defined" << std::endl;
+  } else {
+    std::string tx_hex = cryptonote::get_genesis_tx_hex(targets);
+
+    std::cout << "Insert this line into your coin configuration file as is: " << std::endl;
+    std::cout << "#define GENESIS_COINBASE_TX_HEX  \"" << tx_hex << "\"" << std::endl;
+  }
 
   return;
 }
@@ -80,6 +96,7 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_cmd_sett, arg_console);
   command_line::add_arg(desc_cmd_sett, arg_testnet_on);
   command_line::add_arg(desc_cmd_sett, arg_print_genesis_tx);
+  command_line::add_arg(desc_cmd_sett, arg_genesis_block_reward_address);
 
   cryptonote::core::init_options(desc_cmd_sett);
   cryptonote::core_rpc_server::init_options(desc_cmd_sett);
@@ -102,7 +119,7 @@ int main(int argc, char* argv[])
     }
 
     if (command_line::get_arg(vm, arg_print_genesis_tx)) {
-      print_genesis_tx_hex();
+      print_genesis_tx_hex(vm);
       return false;
     }
 

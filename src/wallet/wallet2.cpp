@@ -282,6 +282,12 @@ void wallet2::refresh(size_t & blocks_fetched)
 //----------------------------------------------------------------------------------------------------
 void wallet2::refresh(size_t & blocks_fetched, bool& received_money)
 {
+  if (m_blockchain.size() == 1 && m_transfers.empty()) {
+    block genesisBlock;
+    generateGenesis(genesisBlock);
+    process_new_transaction(genesisBlock.miner_tx, 0);
+  }
+
   received_money = false;
   blocks_fetched = 0;
   size_t added_blocks = 0;
@@ -515,18 +521,17 @@ void wallet2::load(const std::string& wallet_, const std::string& password)
 
   //keys loaded ok!
   //try to load wallet file. but even if we failed, it is not big problem
-  if(!boost::filesystem::exists(m_wallet_file, e) || e)
-  {
+  if (!boost::filesystem::exists(m_wallet_file, e) || e) {
     LOG_PRINT_L0("file not found: " << m_wallet_file << ", starting with empty blockchain");
     m_account_public_address = m_account.get_keys().m_account_address;
-    return;
+  } else {
+    bool r = tools::unserialize_obj_from_file(*this, m_wallet_file);
+    THROW_WALLET_EXCEPTION_IF(!r, error::file_read_error, m_wallet_file);
+    THROW_WALLET_EXCEPTION_IF(
+      m_account_public_address.m_spend_public_key != m_account.get_keys().m_account_address.m_spend_public_key ||
+      m_account_public_address.m_view_public_key != m_account.get_keys().m_account_address.m_view_public_key,
+      error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);
   }
-  bool r = tools::unserialize_obj_from_file(*this, m_wallet_file);
-  THROW_WALLET_EXCEPTION_IF(!r, error::file_read_error, m_wallet_file);
-  THROW_WALLET_EXCEPTION_IF(
-    m_account_public_address.m_spend_public_key != m_account.get_keys().m_account_address.m_spend_public_key ||
-    m_account_public_address.m_view_public_key  != m_account.get_keys().m_account_address.m_view_public_key,
-    error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);
 
   cryptonote::block genesis;
   generateGenesis(genesis);
