@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 2.8.6)
 
-set(VERSION "2.0.0")
+enable_language(C)
+enable_language(CXX)
+find_package(Threads)
+
+set(VERSION "2.1.0")
 # $Format:Packaged from commit %H%nset(COMMIT %h)%nset(REFS "%d")$
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -8,7 +12,16 @@ set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE TYPE INTERNAL)
 set(CMAKE_SKIP_INSTALL_RULES ON)
 set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON)
 set(CMAKE_SUPPRESS_REGENERATION ON)
-enable_testing()
+set(DO_TESTS ON CACHE STRING "Spend time making tests? Defaults to ON")
+set(STATIC ON CACHE BOOL "Link libraries statically")
+
+if(DO_TESTS)
+  message(STATUS "BUILD TESTS: enabled")
+  enable_testing()
+else()
+  message(STATUS "BUILD TESTS: disabled")
+endif()
+
 # copy CTestCustom.cmake to build dir to disable long running tests in 'make test'
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/CTestCustom.cmake ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -55,7 +68,7 @@ else()
   endif()
   set(WARNINGS "-Wall -Wextra -Wpointer-arith -Wundef -Wvla -Wwrite-strings -Werror -Wno-error=extra -Wno-error=unused-function -Wno-error=deprecated-declarations -Wno-error=sign-compare -Wno-error=strict-aliasing -Wno-error=type-limits -Wno-unused-parameter -Wno-error=unused-variable -Wno-error=undef -Wno-error=uninitialized -Wno-error=unused-result")
   if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    set(WARNINGS "${WARNINGS} -Wno-error=mismatched-tags -Wno-error=null-conversion -Wno-overloaded-shift-op-parentheses -Wno-error=shift-count-overflow -Wno-error=tautological-constant-out-of-range-compare -Wno-error=unused-private-field -Wno-error=unneeded-internal-declaration -Wno-error=unused-function -Wno-error=missing-braces")
+    set(WARNINGS "${WARNINGS} -Wno-error=mismatched-tags -Wno-unused-lambda-capture -Wno-error=null-conversion -Wno-overloaded-shift-op-parentheses -Wno-error=shift-count-overflow -Wno-error=tautological-constant-out-of-range-compare -Wno-error=unused-private-field -Wno-error=unneeded-internal-declaration -Wno-error=unused-function -Wno-error=missing-braces")
   else()
     set(WARNINGS "${WARNINGS} -Wlogical-op -Wno-error=maybe-uninitialized -Wno-error=clobbered -Wno-error=unused-but-set-variable")
   endif()
@@ -111,6 +124,10 @@ if(STATIC)
   set(Boost_USE_STATIC_LIBS ON)
   set(Boost_USE_STATIC_RUNTIME ON)
 endif()
+if(APPLE)
+  set(Boost_USE_STATIC_LIBS ON)
+  set(Boost_USE_STATIC_RUNTIME ON)
+endif()
 find_package(Boost 1.55 REQUIRED COMPONENTS system filesystem thread date_time chrono regex serialization program_options)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 if(MINGW)
@@ -149,4 +166,14 @@ endif()
 
 add_subdirectory(external)
 add_subdirectory(src)
-add_subdirectory(tests)
+if(DO_TESTS)
+  add_subdirectory(tests)
+endif()
+
+## We need to setup the RocksDB build environment to match our system
+if(NOT MSVC)
+  execute_process(
+    COMMAND cmake ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DWITH_GFLAGS=0 -DCMAKE_BUILD_TYPE=MinSizeRel -DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DPORTABLE=ON -B${PROJECT_BINARY_DIR}/rocksdb
+  )
+  set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a")
+endif()
